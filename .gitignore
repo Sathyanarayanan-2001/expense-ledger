@@ -1,0 +1,16 @@
+node_modules/
+dist/
+test-output/
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.env*
+
+# Personal data must never be committed
+ledger-save-*
+Expense_Ledger_Backup*
+Expense_Ledger_*.xlsx
+Expense_Ledger_*.csv
+*.ledger.json
