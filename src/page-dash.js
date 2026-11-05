@@ -63,8 +63,11 @@ function pageStart() {
     ['Income', 'Money received, from entries of type Income.'],
     ['Expense', 'Everything spent on Expense entries, card swipes included.'],
     ['Savings rate', 'Share of income left after Needs and Wants. It is the Savings line of the 50/30/20 check.'],
-    ['Closing balance', 'All active accounts at the period end. Credit cards count as dues, so a swipe lowers it at once.'],
+    ['Closing balance', 'All active bank, cash, wallet and card accounts at the period end. Credit cards count as dues, so a swipe lowers it at once. Savings and investment accounts are not included.'],
+    ['Online wallets', 'RailOne, Paytm and similar. Top one up with an own-account transfer from your bank, then log spends against the wallet with mode Wallet. It counts in the closing balance and reconciles like a bank.'],
     ['Savings and investments', 'Money you moved into SIPs, FDs, PPF and similar. It leaves your bank balance but is not spending.'],
+    ['Savings and investments value', 'EPFO, PPF, NPS, deposits and funds. You record the value from your passbook or statement on a date, and the latest one counts. It is not spending and not in the closing balance.'],
+    ['Net worth', 'Closing balance plus the value of your savings and investment accounts. It shows on the Dashboard once you add one.'],
     ['Transfers out', 'Money sent to other people. You choose Needs, Wants or Savings for each, and it counts there. Moves between your own accounts are left out of every total.'],
     ['Average daily', 'Expense divided by the days tracked in the period so far.'],
     ['Reconciled', 'The tracker balance is within ₹0.50 of the balance your bank shows for the same date.'],
@@ -75,7 +78,7 @@ function pageStart() {
     h('div', { style: { marginTop: '16px' } }, deviceSetupCard()),
     h('div', { class: 'guide', style: { marginTop: '16px' } },
       h('div', { class: 'steps' },
-        step(1, 'Set the ground once', 'Open Setup and enter the opening balance of each account as it stood on the tracking start date (' + startLabel + '). Add a credit card as its own account so swipes and bill payments stay honest.', [h('button', { type: 'button', class: 'btn', onClick: () => go('setup') }, 'Open Setup')]),
+        step(1, 'Set the ground once', 'Open Setup and enter the opening balance of each account as it stood on the tracking start date (' + startLabel + '). Add a credit card as its own account so swipes and bill payments stay honest. Add online wallets such as RailOne and Paytm, and savings such as EPFO, PPF and NPS, with the quick-add buttons.', [h('button', { type: 'button', class: 'btn', onClick: () => go('setup') }, 'Open Setup')]),
         step(2, 'Log in thirty seconds', 'On Add, choose the day and slot (Morning, Afternoon, Evening, Night), then type rows. Entering at night? Log all four slots in one go: every row carries its own slot. Amounts accept sums like 120+80.', [h('button', { type: 'button', class: 'btn primary', onClick: () => go('entry') }, 'Add entries')]),
         step(3, 'Missed a day, a week, a year', 'Change the date and carry on. The calendar shows which slots each day has, and Catch up lists every day with a gap. A slot with no spending takes one tap on No spend, so a gap always means forgotten, never zero.'),
         step(4, 'Read the dashboard', 'Pick a financial year and either the full year or one month. Everything below it follows that choice: seven headline figures, the 50/30/20 check, bank reconciliation, top categories and two charts.', [h('button', { type: 'button', class: 'btn', onClick: () => go('dashboard') }, 'Open Dashboard')]),
@@ -94,6 +97,7 @@ function pageStart() {
           ['An entry is missing on another device', 'Check the sync app has run, then reopen the page. Save files can arrive late, and they merge when they do.'],
           ['Asked to allow folder access', 'Choose Allow. Browsers sometimes ask again after a restart.'],
           ['A new browser, or its data was cleared', 'Choose the sync folder again and the latest save loads, or restore a backup from Setup.'],
+          ['A wallet or EPFO balance looks wrong', 'A wallet needs its top-ups logged as own-account transfers from your bank. A savings account such as EPFO takes the latest passbook value, recorded on the Dashboard.'],
           ['Before a big change', 'Download a backup from Setup. The folder keeps only the last 3 sessions.'],
         ].map((x) => [h('dt', null, x[0]), h('dd', null, x[1])]))),
       )));
@@ -115,7 +119,7 @@ function dashCalc() {
   const psum = Core.summarize(d.txns, pp.from, pp.to);
   return {
     d, t, period, sum, psum, pp, days: Core.elapsedDays(period, t, d.cfg, d.txns), clos: Core.closing(d.cfg, d.legs, period, t),
-    ft: Core.fiftyThirtyTwenty(sum, d.cfg.targets), rec: Core.reconcile(d.cfg, d.legs, d.recon, period, t), top: Core.topCategories(sum, d.cfg, 8),
+    ft: Core.fiftyThirtyTwenty(sum, d.cfg.targets), rec: Core.reconcile(d.cfg, d.legs, d.recon, period, t), hold: Core.holdings(d.cfg, d.recon, period, t), top: Core.topCategories(sum, d.cfg, 8),
   };
 }
 function kpi(label, value, sub, extra, color) {
@@ -131,37 +135,56 @@ function attention(c) {
   const mism = c.rec.filter((r) => r.status === 'mismatch').length;
   if (mism) items.push({ text: mism + (mism > 1 ? ' accounts do' : ' account does') + ' not match the bank', run: () => { const e = document.getElementById('recon'); if (e) e.scrollIntoView({ behavior: 'smooth' }); } });
   else if (noBal) items.push({ text: noBal + (noBal > 1 ? ' accounts have' : ' account has') + ' no bank balance recorded', run: () => { ui.recon.open = true; render(); const e = document.getElementById('recon'); if (e) e.scrollIntoView(); } });
+  const noVal = c.hold ? c.hold.rows.filter((r) => r.status === 'none').length : 0;
+  if (noVal) items.push({ text: noVal + (noVal > 1 ? ' savings accounts have' : ' savings account has') + ' no value recorded', run: () => { ui.hold.open = true; render(); const e = document.getElementById('holdings'); if (e) e.scrollIntoView(); } });
   const over = Core.budgetRows(d.cfg, c.sum, c.period, t, Core.firstTracked(d.cfg, d.txns)).filter((r) => r.status.id === 'over').length;
   if (over) items.push({ text: over + (over > 1 ? ' categories are' : ' category is') + ' over budget', run: () => go('budget') });
   if (!items.length) return null;
   return h('div', { class: 'attn', role: 'list', 'aria-label': 'Needs attention' }, items.map((i) => h('button', { type: 'button', role: 'listitem', onClick: i.run }, icon('alert', 14), i.text)));
 }
-function reconForm(c) {
-  const d = c.d, r = ui.recon;
-  const accts = d.cfg.accounts.filter((a) => a.active);
+// One form records a balance or a value on a date. Banks, cash, wallets and cards use it to compare with the bank
+// (state ui.recon). Savings and investment accounts use it to record the passbook or statement value (state ui.hold).
+function balanceForm(c, r, o) {
+  const d = c.d;
+  const accts = o.accts;
   if (!r.acct || !accts.some((a) => a.id === r.acct)) r.acct = accts.length ? accts[0].id : '';
   if (!r.asOf) r.asOf = Core.minD(c.t, c.period.to);
   const acct = accts.find((a) => a.id === r.acct);
-  const tracker = acct && Core.isDate(r.asOf) ? Core.balanceAt(d.cfg, d.legs, acct.id, r.asOf) : null;
   const err = h('p', { class: 'err-text', role: 'alert' }, r.err || '');
-  const hint = h('span', { class: 'xs muted', style: { fontWeight: 400 } }, tracker === null ? 'Tracker has no balance for a date before the tracking start.' : 'The tracker shows ' + fmtBal(acct, tracker) + ' on this date.');
+  const hint = h('span', { class: 'xs muted', style: { fontWeight: 400 } }, o.hint(acct, r.asOf));
   return h('form', { class: 'stack', style: { borderTop: '1px solid var(--line)', paddingTop: '14px' }, onSubmit: async (e) => {
     e.preventDefault();
     const v = Number(String(r.bal).replace(/[₹,\s]/g, ''));
     if (!acct) { r.err = 'Add an account in Setup first.'; return render(); }
     if (!Core.isDate(r.asOf) || r.asOf > c.t) { r.err = 'Choose a valid date that is not in the future.'; return render(); }
-    if (r.bal === '' || !isFinite(v)) { r.err = 'Enter the balance shown by the bank.'; return render(); }
+    if (r.bal === '' || !isFinite(v)) { r.err = o.missing; return render(); }
     const bal = acct.kind === 'card' ? -Math.abs(v) : v;
     r.err = '';
-    try { await Store.putRecon({ id: Store.uid(), acct: acct.id, asOf: r.asOf, bal, note: r.note }); r.bal = ''; r.note = ''; Toast.show('Balance recorded for ' + acct.name); } catch (x) { /* surfaced */ }
+    try { await Store.putRecon({ id: Store.uid(), acct: acct.id, asOf: r.asOf, bal, note: r.note }); r.bal = ''; r.note = ''; Toast.show(o.done + acct.name); } catch (x) { /* surfaced */ }
   } },
     h('div', { class: 'fgrid' },
-      field('Account', select('rc-acct', accts.map((a) => ({ value: a.id, label: a.name })), r.acct, (v) => { r.acct = v; render(); }), 'c3'),
-      field('As of date', h('input', { id: 'rc-date', class: 'in', type: 'date', max: c.t, value: r.asOf, onChange: (e) => { r.asOf = e.target.value; render(); } }), 'c3'),
-      field(acct && acct.kind === 'card' ? 'Amount due per bank (₹)' : 'Balance per bank (₹)', h('input', { id: 'rc-bal', class: 'in', inputmode: 'decimal', autocomplete: 'off', value: r.bal, placeholder: '0.00', onInput: (e) => (r.bal = e.target.value) }), 'c3'),
-      field('Note (optional)', h('input', { id: 'rc-note', class: 'in', value: r.note, onInput: (e) => (r.note = e.target.value) }), 'c3')),
+      field('Account', select(o.id + '-acct', accts.map((a) => ({ value: a.id, label: a.name })), r.acct, (v) => { r.acct = v; render(); }), 'c3'),
+      field('As of date', h('input', { id: o.id + '-date', class: 'in', type: 'date', max: c.t, value: r.asOf, onChange: (e) => { r.asOf = e.target.value; render(); } }), 'c3'),
+      field(o.balLabel(acct), h('input', { id: o.id + '-bal', class: 'in', inputmode: 'decimal', autocomplete: 'off', value: r.bal, placeholder: '0.00', onInput: (e) => (r.bal = e.target.value) }), 'c3'),
+      field('Note (optional)', h('input', { id: o.id + '-note', class: 'in', value: r.note, onInput: (e) => (r.note = e.target.value) }), 'c3')),
     hint, err,
-    h('div', { class: 'row' }, h('button', { class: 'btn primary', type: 'submit' }, 'Record balance'), h('button', { class: 'btn', type: 'button', onClick: () => { r.open = false; r.err = ''; render(); } }, 'Close')));
+    h('div', { class: 'row' }, h('button', { class: 'btn primary', type: 'submit' }, o.submit), h('button', { class: 'btn', type: 'button', onClick: () => { r.open = false; r.err = ''; render(); } }, 'Close')));
+}
+function reconForm(c) {
+  const d = c.d;
+  return balanceForm(c, ui.recon, {
+    id: 'rc', accts: d.cfg.accounts.filter((a) => a.active && !Core.isHolding(a)), submit: 'Record balance', done: 'Balance recorded for ', missing: 'Enter the balance shown by the bank.',
+    balLabel: (a) => (a && a.kind === 'card' ? 'Amount due per bank (₹)' : a && a.kind === 'wallet' ? 'Balance per wallet app (₹)' : 'Balance per bank (₹)'),
+    hint: (a, asOf) => { const tr = a && Core.isDate(asOf) ? Core.balanceAt(d.cfg, d.legs, a.id, asOf) : null; return tr === null ? 'Tracker has no balance for a date before the tracking start.' : 'The tracker shows ' + fmtBal(a, tr) + ' on this date.'; },
+  });
+}
+function holdForm(c) {
+  const d = c.d;
+  return balanceForm(c, ui.hold, {
+    id: 'hv', accts: d.cfg.accounts.filter((a) => a.active && Core.isHolding(a)), submit: 'Record value', done: 'Value recorded for ', missing: 'Enter the value shown on the passbook or statement.',
+    balLabel: () => 'Current value (₹)',
+    hint: (a, asOf) => { const row = c.hold && c.hold.rows.find((x) => a && x.acct.id === a.id); return row && row.status !== 'none' ? 'Latest recorded value: ' + INR2(row.value) + ' as of ' + Core.dateLabel(row.asOf) + '.' : 'Nothing recorded yet for this account.'; },
+  });
 }
 function reconCard(c) {
   const d = c.d, am = Core.acctMap(d.cfg);
@@ -177,7 +200,7 @@ function reconCard(c) {
       h('td', { class: 'r', 'data-label': 'Difference' }, r.diff === undefined || r.diff === null ? '–' : Core.fmtINR(r.diff, { sign: true })),
       h('td', { 'data-label': 'Status' }, stat(r)),
       h('td', { class: 'noLabel' }, h('button', { type: 'button', class: 'btn sm', onClick: () => { ui.recon.open = true; ui.recon.acct = r.acct.id; ui.recon.asOf = ''; render(); const e = document.getElementById('rc-bal'); if (e) e.focus(); } }, r.status === 'none' ? 'Add balance' : 'Update'))))));
-  const hist = d.recon.slice().sort((a, b) => (a.asOf < b.asOf ? 1 : -1)).slice(0, 8);
+  const hist = d.recon.filter((r) => !Core.isHolding(am[r.acct])).sort((a, b) => (a.asOf < b.asOf ? 1 : -1)).slice(0, 8);
   return h('section', { class: 'card', id: 'recon', 'aria-label': 'Balance reconciliation' },
     h('header', null, h('div', null, h('h3', null, 'Balance reconciliation'), h('p', null, 'Latest bank balance on or before ' + Core.dateLabel(Core.minD(c.period.to, c.t)) + ', compared with what the tracker computes for the same date.')),
       h('button', { type: 'button', class: 'btn', 'aria-expanded': String(ui.recon.open), onClick: () => { ui.recon.open = !ui.recon.open; render(); } }, ui.recon.open ? 'Hide form' : 'Record bank balance')),
@@ -186,6 +209,40 @@ function reconCard(c) {
     hist.length && ui.recon.open ? h('div', null, h('h4', { class: 'small', style: { marginBottom: '6px' } }, 'Recently recorded'),
       hist.map((r) => h('div', { class: 'dayrow' }, h('span', { class: 'small' }, (am[r.acct] || { name: r.acct }).name + ' · ' + Core.dateLabel(r.asOf) + ' · ' + fmtBal(am[r.acct], r.bal) + (r.demo ? ' (sample)' : '')),
         confirmButton('rc' + r.id, 'Remove', 'Confirm', () => Store.removeRecon([r.id]))))) : null);
+}
+function holdCard(c) {
+  const d = c.d, am = Core.acctMap(d.cfg), hold = c.hold;
+  const has = d.cfg.accounts.some((a) => a.active && Core.isHolding(a));
+  const title = 'Savings and investments value';
+  if (!has) {
+    return h('section', { class: 'card', id: 'holdings', 'aria-label': title },
+      h('header', null, h('div', null, h('h3', null, title), h('p', null, 'Track EPFO, PPF, NPS, fixed deposits, mutual funds and similar holdings by recording the value on your passbook or statement. They add to your net worth and stay out of the balance you can spend.')),
+        h('button', { type: 'button', class: 'btn', onClick: () => go('setup') }, 'Add in Setup')));
+  }
+  const stat = (r) => (r.status === 'recorded' ? pill('good', 'Recorded') : r.status === 'opening' ? pill('neutral', 'Value at start') : pill('neutral', 'No value recorded'));
+  const open = (id) => { ui.hold.open = true; ui.hold.acct = id; ui.hold.asOf = ''; render(); const e = document.getElementById('hv-bal'); if (e) e.focus(); };
+  const rows = hold ? hold.rows : [];
+  const table = h('table', { class: 'tbl stackable' },
+    h('thead', null, h('tr', null, ['Account', 'As of date', 'Value', 'Change since previous', 'Source', ''].map((x, i) => h('th', { class: i === 2 || i === 3 ? 'r' : '' }, x)))),
+    h('tbody', null, rows.map((r) => h('tr', null,
+      h('td', { 'data-label': 'Account' }, h('strong', null, r.acct.name)),
+      h('td', { 'data-label': 'As of date' }, r.asOf ? Core.dateLabel(r.asOf) : '–'),
+      h('td', { class: 'r', 'data-label': 'Value' }, r.value === undefined ? '–' : INR2(r.value)),
+      h('td', { class: 'r', 'data-label': 'Change since previous' }, r.change === undefined || r.change === null ? '–' : Core.fmtINR(r.change, { sign: true })),
+      h('td', { 'data-label': 'Source' }, stat(r)),
+      h('td', { class: 'noLabel' }, h('button', { type: 'button', class: 'btn sm', onClick: () => open(r.acct.id) }, r.status === 'none' ? 'Add value' : 'Update'))))),
+    hold ? h('tfoot', null, h('tr', null, h('td', { 'data-label': 'Total' }, 'Total'), h('td', null), h('td', { class: 'r', 'data-label': 'Value' }, INR2(hold.total)), h('td', null), h('td', null), h('td', null))) : null);
+  const worth = hold && c.clos ? h('p', { class: 'small', style: { margin: 0 } }, h('strong', null, 'Net worth ' + INR2(Core.fromP(Core.toP(c.clos.total) + Core.toP(hold.total)))), h('span', { class: 'muted' }, ' = closing balance ' + INR2(c.clos.total) + ' + savings and investments ' + INR2(hold.total) + ' as of ' + Core.dateLabel(hold.asOf))) : null;
+  const hist = d.recon.filter((r) => Core.isHolding(am[r.acct])).sort((a, b) => (a.asOf < b.asOf ? 1 : -1)).slice(0, 8);
+  return h('section', { class: 'card', id: 'holdings', 'aria-label': title },
+    h('header', null, h('div', null, h('h3', null, title), h('p', null, 'The latest value you recorded on or before ' + Core.dateLabel(Core.minD(c.period.to, c.t)) + '. These holdings stay out of the closing balance and add to your net worth.')),
+      h('button', { type: 'button', class: 'btn', 'aria-expanded': String(ui.hold.open), onClick: () => { ui.hold.open = !ui.hold.open; render(); } }, ui.hold.open ? 'Hide form' : 'Record value')),
+    hold ? h('div', { class: 'tw' }, table) : h('p', { class: 'small muted' }, 'This period is before the tracking start date.'),
+    worth,
+    ui.hold.open ? holdForm(c) : null,
+    hist.length && ui.hold.open ? h('div', null, h('h4', { class: 'small', style: { marginBottom: '6px' } }, 'Recently recorded'),
+      hist.map((r) => h('div', { class: 'dayrow' }, h('span', { class: 'small' }, (am[r.acct] || { name: r.acct }).name + ' · ' + Core.dateLabel(r.asOf) + ' · ' + INR2(r.bal) + (r.demo ? ' (sample)' : '')),
+        confirmButton('hv' + r.id, 'Remove', 'Confirm', () => Store.removeRecon([r.id]))))) : null);
 }
 function ftCard(c) {
   const sum = c.sum, ft = c.ft;
@@ -249,7 +306,8 @@ function pageDashboard() {
   const prevLab = (inProgress ? 'full ' : '') + (p.kind === 'month' ? Core.monthLabel(c.pp.ym) : Core.fyLabel(c.pp.fy));
   const rate = s.rate;
   const cl = c.clos;
-  const cardTxt = cl && c.d.cfg.accounts.some((a) => a.active && a.kind === 'card') ? ' · banks and cash ' + INR(cl.banks) + ' · card dues ' + INR(-cl.cards) : '';
+  const hasCard = c.d.cfg.accounts.some((a) => a.active && a.kind === 'card'), hasWallet = c.d.cfg.accounts.some((a) => a.active && a.kind === 'wallet');
+  const cardTxt = cl && (hasCard || hasWallet) ? ' · banks, cash' + (hasWallet ? ' and wallets ' : ' ') + INR(cl.banks) + (hasCard ? ' · card dues ' + INR(-cl.cards) : '') : '';
   const kpis = h('div', { class: 'kpis' },
     kpi('Income', INR(s.income), dl(s.income, c.psum.income, prevLab) || s.count + ' entries in period', null, 'var(--inc)'),
     kpi('Expense', INR(s.expense), dl(s.expense, c.psum.expense, prevLab) || 'Needs ' + INR(s.expNeeds) + ' · Wants ' + INR(s.expWants), null, 'var(--exp)'),
@@ -263,5 +321,5 @@ function pageDashboard() {
     noData ? emptyState('Nothing logged yet', 'Add your first entry and these figures fill in as you go. Opening balances in Setup make the closing balance and reconciliation meaningful.', [
       h('button', { type: 'button', class: 'btn primary', onClick: () => go('entry') }, 'Add an entry'),
       h('button', { type: 'button', class: 'btn', onClick: async () => { try { const n = await Store.loadSample(); Toast.show('Loaded ' + n + ' sample entries'); } catch (e) { /* surfaced */ } } }, 'Load sample data')]) : null,
-    kpis, ftCard(c), reconCard(c), topCard(c), chartsRow(c));
+    kpis, ftCard(c), reconCard(c), holdCard(c), topCard(c), chartsRow(c));
 }

@@ -406,6 +406,83 @@ section('phone: layout, touch targets and install');
   await M.context.close();
 }
 
+section('online wallets and savings accounts');
+{
+  const W = await device({ tag: 'wallets' });
+  const p = W.page;
+  await p.clock.install({ time: new Date('2026-10-31T21:00:00+05:30') });
+  await ready(p);
+  const accts = () => p.evaluate(() => Store.derive().cfg.accounts.map((a) => [a.name, a.kind, a.opening]));
+  const submit = async () => { await p.locator('form:has(#acc-new-name) button[type=submit]').click(); await p.waitForTimeout(250); };
+  await tab(p, 'Setup');
+  await p.locator('#acc-open-a_hdfc').fill('10000'); await p.locator('#acc-open-a_hdfc').press('Tab'); await p.waitForTimeout(150);
+  check('Setup offers quick-add chips for wallets and savings', (await p.getByRole('button', { name: 'Fill in RailOne as Online wallet' }).count()) === 1 && (await p.getByRole('button', { name: 'Fill in Paytm as Online wallet' }).count()) === 1 && (await p.getByRole('button', { name: 'Fill in EPFO as Savings or investment' }).count()) === 1);
+  await p.getByRole('button', { name: 'Fill in RailOne as Online wallet' }).click();
+  check('a chip fills the name and the type', (await p.locator('#acc-new-name').inputValue()) === 'RailOne' && (await p.locator('#acc-new-kind').inputValue()) === 'wallet');
+  await p.locator('#acc-new-open').fill('200'); await submit();
+  check('RailOne is added as an online wallet with its opening balance', JSON.stringify((await accts()).find((a) => a[0] === 'RailOne')) === JSON.stringify(['RailOne', 'wallet', 200]), JSON.stringify(await accts()));
+  await p.getByRole('button', { name: 'Fill in EPFO as Savings or investment' }).click();
+  await p.locator('#acc-new-open').fill('50000'); await submit();
+  check('adding a savings account says where to record its value', (await toast(p)).includes('Record its value from the Dashboard'), await toast(p));
+  await p.getByRole('button', { name: 'Fill in PPF as Savings or investment' }).click(); await submit();
+  check('EPFO and PPF are savings accounts with the value entered at start', JSON.stringify((await accts()).filter((a) => ['EPFO', 'PPF'].includes(a[0]))) === JSON.stringify([['EPFO', 'savings', 50000], ['PPF', 'savings', 0]]), JSON.stringify(await accts()));
+  check('a chip disappears once its account exists', (await p.getByRole('button', { name: 'Fill in RailOne as Online wallet' }).count()) === 0 && (await p.getByRole('button', { name: 'Fill in EPFO as Savings or investment' }).count()) === 0);
+  check('the Type list names the new kinds', (await p.locator('#acc-new-kind option').allInnerTexts()).join('|') === 'Bank account|Cash|Online wallet|Credit card|Savings or investment');
+
+  await tab(p, 'Add');
+  const row = p.locator('.draft').first();
+  const setDate = async (d) => { await p.locator('#e-date').fill(d); await p.locator('#e-date').dispatchEvent('change'); await p.waitForTimeout(120); };
+  const save = async () => { await p.locator('#saveAll').click(); await p.waitForTimeout(250); };
+  const opts = await row.locator('select[id$="-acct"] option').allInnerTexts();
+  check('Add lists the wallet but not the savings accounts', opts.includes('RailOne (wallet)') && !opts.some((o) => o.includes('EPFO') || o.includes('PPF')), JSON.stringify(opts));
+  await setDate('2026-10-03');
+  await row.locator('.seg button', { hasText: 'Own transfer' }).first().click();
+  await row.locator('select[id$="-acct"]').selectOption({ label: 'HDFC' });
+  const toOpts = await row.locator('select[id$="-to"] option').allInnerTexts();
+  check('a wallet top-up can go to the wallet, and not to a savings account', toOpts.includes('RailOne (wallet)') && !toOpts.some((o) => o.includes('EPFO')), JSON.stringify(toOpts));
+  await row.locator('input[id$="-amt"]').fill('500'); await row.locator('select[id$="-to"]').selectOption({ label: 'RailOne (wallet)' }); await row.locator('input[id$="-desc"]').fill('Top up'); await save();
+  check('top-up saved', (await toast(p)).includes('Saved'), await toast(p));
+  await setDate('2026-10-04');
+  await row.locator('select[id$="-acct"]').selectOption({ label: 'RailOne (wallet)' });
+  check('choosing a wallet sets the mode to Wallet', (await row.locator('select[id$="-mode"]').inputValue()) === 'Wallet');
+  await row.locator('input[id$="-amt"]').fill('120'); await row.locator('select[id$="-cat"]').selectOption({ label: 'Dining and takeaway' }); await row.locator('input[id$="-desc"]').fill('Station meal'); await save();
+  check('wallet spend saved', (await toast(p)).includes('Saved'), await toast(p));
+
+  await tab(p, 'Dashboard'); await p.waitForTimeout(250);
+  check('closing balance counts the wallet and leaves savings out', (await kpi(p, 'Closing balance')) === '₹10,080', await kpi(p, 'Closing balance'));
+  check('closing balance names the wallets', (await txt(p, '.kpi:has-text("Closing balance")')).includes('wallets'));
+  const hold = () => txt(p, '#holdings');
+  check('savings card shows EPFO at its start value and PPF with none', (await hold()).includes('₹50,000') && (await p.locator('#holdings tbody tr', { hasText: 'PPF' }).innerText()).includes('No value recorded') && (await p.locator('#holdings tbody tr', { hasText: 'EPFO' }).innerText()).includes('Value at start'));
+  check('net worth adds savings to the closing balance', (await hold()).includes('Net worth ₹60,080'), await hold());
+  check('a chip says one savings account has no value', (await txt(p, '.attn')).includes('1 savings account has no value recorded'));
+  check('the bank reconciliation lists the wallet and not the savings accounts', (await p.locator('#recon tbody tr', { hasText: 'RailOne' }).count()) === 1 && (await p.locator('#recon tbody tr', { hasText: 'EPFO' }).count()) === 0 && (await p.locator('#recon tbody tr', { hasText: 'PPF' }).count()) === 0);
+  await p.locator('#recon tbody tr', { hasText: 'RailOne' }).getByRole('button', { name: 'Add balance' }).click(); await p.waitForTimeout(150);
+  check('the wallet form asks for the balance per wallet app', (await txt(p, '#recon form')).includes('Balance per wallet app') && (await txt(p, '#recon form')).includes('The tracker shows ₹580'), await txt(p, '#recon form'));
+  await p.locator('#rc-bal').fill('580'); await p.getByRole('button', { name: 'Record balance' }).click(); await p.waitForTimeout(250);
+  check('the wallet reconciles with its app balance', (await p.locator('#recon tbody tr', { hasText: 'RailOne' }).first().innerText()).includes('Reconciled'));
+
+  await p.locator('#holdings tbody tr', { hasText: 'EPFO' }).getByRole('button', { name: 'Update' }).click(); await p.waitForTimeout(150);
+  check('the value form opens on EPFO and shows the latest value', (await p.locator('#hv-acct').inputValue()) !== '' && (await txt(p, '#holdings form')).includes('Latest recorded value: ₹50,000'), await txt(p, '#holdings form'));
+  await p.locator('#hv-bal').fill('52,500'); await p.getByRole('button', { name: 'Record value' }).click(); await p.waitForTimeout(250);
+  check('recording a value updates the card, the change and net worth', (await p.locator('#holdings tbody tr', { hasText: 'EPFO' }).innerText()).includes('₹52,500') && (await p.locator('#holdings tbody tr', { hasText: 'EPFO' }).innerText()).includes('+₹2,500') && (await hold()).includes('Net worth ₹62,580'), await hold());
+  check('that value is not in the bank reconciliation history', !(await txt(p, '#recon')).includes('EPFO'));
+  await p.locator('#hv-acct').selectOption({ label: 'PPF' }); await p.locator('#hv-bal').fill('1,10,000'); await p.getByRole('button', { name: 'Record value' }).click(); await p.waitForTimeout(250);
+  check('PPF value is recorded and totals follow', (await hold()).includes('₹1,10,000') && (await hold()).includes('₹1,62,500') && (await hold()).includes('Net worth ₹1,72,580'), await hold());
+  check('the no-value chip is gone', !((await p.locator('.attn').count()) && (await txt(p, '.attn')).includes('no value recorded')));
+  await p.getByRole('button', { name: 'Hide form' }).last().click().catch(() => {});
+
+  await p.reload(); await p.waitForFunction(() => typeof Store !== 'undefined' && Store.state.mode === 'local'); await p.waitForSelector('#view h1'); await tab(p, 'Dashboard'); await p.waitForTimeout(250);
+  check('recorded values survive a reload', (await txt(p, '#holdings')).includes('₹52,500') && (await txt(p, '#holdings')).includes('Net worth ₹1,72,580'));
+  await tab(p, 'Records'); await p.waitForTimeout(150);
+  const bankOpts = await p.locator('#rec-acct option').allInnerTexts();
+  check('Records filters by the wallet and not by savings accounts', bankOpts.includes('RailOne') && !bankOpts.includes('EPFO') && !bankOpts.includes('PPF'), JSON.stringify(bankOpts));
+  const bk = await p.evaluate(() => Store.backup());
+  check('a backup carries the wallet, the savings accounts and their recorded values', Object.keys(bk.data.cfg.accts).length === 7 && Object.keys(bk.data.recon).length === 3);
+  await tab(p, 'Start');
+  { const g = await txt(p, '#view'); check('the guide explains wallets, savings value, net worth and the quick-add buttons', ['Online wallets', 'Savings and investments value', 'Net worth', 'A wallet or EPFO balance looks wrong', 'quick-add buttons'].every((w) => g.includes(w))); }
+  await W.context.close();
+}
+
 section('desktop screenshots with sample data');
 {
   const S = await device({ tag: 'screenshots' });

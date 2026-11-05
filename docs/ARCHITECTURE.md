@@ -30,6 +30,12 @@ cfg     start date and targets, banks and categories (by id), budgets (by catego
 
 Money is held in whole paise, so totals are exact. Financial years run 1 April to 31 March.
 
+Accounts have a kind: bank, cash, online wallet, credit card, or savings or investment.
+
+- Bank, cash, wallet and card accounts are computed from entries: opening balance plus deposits minus withdrawals. They make up the closing balance, and each is reconciled against a balance you record.
+- A savings or investment account is a holding. It takes no entries. Its value on a date is the latest value you recorded on or before that date, or the value entered in Setup when nothing is recorded yet. A record dated the start day beats the start value. `Core.holdings` returns each account's value, its previous value and the change, and the net worth is the closing balance plus the total.
+- Recorded values share the `recon` table with bank balance checks, so they merge, sync and delete the same way.
+
 ## Sync
 
 Every record has an update time `u`. Deleted entries and balance checks stay behind as `{ d: 1, u }` so the deletion travels to other devices too.

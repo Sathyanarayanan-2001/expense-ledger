@@ -39,6 +39,25 @@ These browsers can't open folders, so folder sync isn't available. The app still
 
 Restoring merges the file into what is already there and never deletes anything, so doing it twice is safe. A backup is also how you move to a new browser, or onto an iPhone.
 
+## Online wallets and savings accounts
+
+Add these in **Setup**, under **Accounts**. The quick-add buttons fill in the name and type for RailOne, Paytm, PhonePe, Amazon Pay, Mobikwik, EPFO, PPF, NPS, fixed deposits, mutual funds, stocks and gold. You can type any other name.
+
+**Online wallet** (RailOne, Paytm and similar)
+
+1. Add it as an **Online wallet** with the balance it held on the tracking start date.
+2. Top it up with an **Own transfer** from your bank to the wallet.
+3. Log spends with the wallet as the account. The mode becomes **Wallet**.
+4. Cashback or refunds are **Income**.
+5. To check it, record the balance shown in the wallet app under **Record bank balance** on the Dashboard.
+
+**Savings or investment** (EPFO, PPF, NPS, deposits, funds)
+
+1. Add it as **Savings or investment** with its value on the tracking start date.
+2. Whenever you look at the passbook or statement, record the value on the Dashboard under **Savings and investments value**.
+3. The latest value counts. The card shows its change since the previous value, the total, and your net worth (closing balance plus these values).
+4. These accounts take no entries and stay out of the closing balance. Money you move into them from your bank is still logged as a **Savings and investment** entry.
+
 ## Check it works
 
 1. Log an entry on the phone.

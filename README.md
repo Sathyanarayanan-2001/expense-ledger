@@ -10,7 +10,8 @@ A personal daily, monthly and yearly expense ledger that runs in the browser. Lo
 
 - **Four slots a day:** Morning, Afternoon, Evening and Night. Log in any order, on any day, and mark a slot *No spend* so a gap always means forgotten, never zero.
 - **Catch up:** the calendar shows which slots each day has, and a list shows every day with a gap.
-- **Accounts that add up:** bank accounts, cash and credit cards. Transfers between your own accounts are left out of every total.
+- **Accounts that add up:** bank accounts, cash, credit cards and online wallets such as RailOne and Paytm. Transfers between your own accounts are left out of every total.
+- **Savings and net worth:** add EPFO, PPF, NPS, deposits and funds as savings accounts, record the passbook value when you check it, and see your net worth next to the balance you can spend.
 - **Dashboard:** income, expense, savings rate, closing balance, savings and investments, transfers out and average daily spend, for a month or a whole April to March financial year. Includes a 50/30/20 check and top categories.
 - **Bank reconciliation:** record the balance your bank shows, and the ledger says whether it matches for that date.
 - **Budget:** monthly limits by category, where the month is heading, and what you can still spend per day.

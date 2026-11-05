@@ -107,6 +107,16 @@ r = run([['Date', 'Withdrawal amount', 'Bank', 'Category'], ['03-10-2026', '500'
 eq('near-match bank is a choice with a suggestion', [r.st, r.res.needs.banks.map((b) => [b.name, b.suggest])], [['error'], [['HDFC Credit Card', 'a_hdfc']]]);
 r = run([['Date', 'Withdrawal amount', 'Bank', 'Category'], ['03-10-2026', '500', 'HDFC Credit Card', 'Miscellaneous']], { csv: true }, { bankMap: { hdfccreditcard: 'a_hdfc' } });
 eq('after choosing, the choice stays listed and the row imports', [r.st, r.res.needs.banks.length], [['new'], 1]);
+// wallets and savings accounts: a wallet imports like a bank, a savings account never receives entries
+{
+  const cfgS = C.normCfg({ ...cfg, accounts: [...cfg.accounts, { id: 'a_rail', name: 'RailOne', kind: 'wallet', opening: 0, active: true }, { id: 'a_epfo', name: 'EPFO', kind: 'savings', opening: 0, active: true }] });
+  const tt = IO.parseTable([['Date', 'Withdrawal amount', 'Bank', 'Category', 'Mode of payment'], ['03-10-2026', '120', 'RailOne', 'Miscellaneous', 'Wallet'], ['04-10-2026', '500', 'EPFO', 'Miscellaneous', '']], { csv: true });
+  const rs = IO.resolve(tt.drafts, cfgS, { provided: tt.provided, today: '2026-11-01', autoCreate: false });
+  const pl = IO.plan(rs.entries, [], {});
+  eq('a wallet name matches its account and the Wallet mode is read', [rs.entries[0].acct, rs.entries[0].mode, pl[0].status], ['a_rail', 'Wallet', 'new']);
+  eq('a savings account name is not matched, so the row is held back and the bank is asked about', [pl[1].status, rs.needs.banks.map((b) => b.name)], ['error', ['EPFO']]);
+  { const m = IO.parseTable([['Date', 'Withdrawal amount', 'Bank', 'Category', 'Mode of payment'], ['03-10-2026', '10', 'HDFC', 'Miscellaneous', 'wallet'], ['03-10-2026', '10', 'HDFC', 'Miscellaneous', 'E-Wallet']], { csv: true }); eq('mode aliases wallet and e-wallet read as Wallet', m.drafts.map((d) => d.mode), ['Wallet', 'Wallet']); }
+}
 // 10 category names that look like transfers
 r = run([['Date', 'Withdrawal amount', 'Bank', 'Category', 'Type'], ['03-10-2026', '500', 'UCO Bank', 'Transfer to parents', 'Sent to others']], { csv: true }, { autoCreate: true });
 eq('a typed category named like a transfer stays a category', [r.res.entries[0].type, r.res.newCats.map((c) => c.name)], ['transferout', ['Transfer to parents']]);

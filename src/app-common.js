@@ -10,7 +10,7 @@ const PAGES = [
 ];
 const ui = {
   page: 'start', fy: null, sel: null, theme: 'auto', pending: false,
-  entry: null, rec: null, recon: { open: false, acct: '', asOf: '', bal: '', note: '', err: '' }, confirm: {}, loadingSample: false,
+  entry: null, rec: null, recon: { open: false, acct: '', asOf: '', bal: '', note: '', err: '' }, hold: { open: false, acct: '', asOf: '', bal: '', note: '', err: '' }, confirm: {}, loadingSample: false,
 };
 const INR = (x) => Core.fmtINR(x, { dec: 0 });
 const INR2 = (x) => Core.fmtINR(x);

@@ -4,6 +4,11 @@ function updCfg(fn) { const cfg = JSON.parse(JSON.stringify(Store.derive().cfg))
 function slug(s) { return 'x_' + s.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 10) + Store.uid().slice(-5); }
 // drafts of the two "add" forms live outside the render so a repaint never wipes what was typed
 const newAcct = { v: '', kind: 'bank', open: '' };
+// One tap fills the name and type of common online wallets and savings accounts. Anything else can be typed.
+const ACCT_PRESETS = [
+  { group: 'Online wallets', kind: 'wallet', names: ['RailOne', 'Paytm', 'PhonePe', 'Amazon Pay', 'Mobikwik'] },
+  { group: 'Savings and investments', kind: 'savings', names: ['EPFO', 'PPF', 'NPS', 'Fixed deposit', 'Mutual funds', 'Stocks', 'Gold'] },
+];
 const newCat = { name: '', kind: 'expense', group: 'needs' };
 function accountsCard(d) {
   const cfg = d.cfg;
@@ -11,24 +16,28 @@ function accountsCard(d) {
   const rows = cfg.accounts.map((a, i) => h('tr', null,
     h('td', { 'data-label': 'Name' }, h('input', { id: 'acc-name-' + a.id, class: 'in', value: a.name, 'aria-label': 'Account name', onChange: (e) => { const v = e.target.value.trim(); if (v) updCfg((c) => (c.accounts[i].name = v)); else render(); } })),
     h('td', { 'data-label': 'Type' }, select('acc-kind-' + a.id, Object.keys(Core.KIND_LABEL).map((k) => ({ value: k, label: Core.KIND_LABEL[k] })), a.kind, (v) => updCfg((c) => { const wasCard = c.accounts[i].kind === 'card'; c.accounts[i].kind = v; if (v === 'card' && !wasCard) c.accounts[i].opening = -Math.abs(c.accounts[i].opening); if (v !== 'card' && wasCard) c.accounts[i].opening = Math.abs(c.accounts[i].opening); }))),
-    h('td', { 'data-label': a.kind === 'card' ? 'Amount owed at start (₹)' : 'Opening balance (₹)' }, h('input', { id: 'acc-open-' + a.id, class: 'in', inputmode: 'decimal', style: { textAlign: 'right' }, 'aria-label': 'Opening balance of ' + a.name, value: a.opening ? String(a.kind === 'card' ? Math.abs(a.opening) : a.opening) : '', placeholder: '0', onChange: (e) => { const raw = e.target.value.replace(/[₹,\s]/g, ''); const v = raw === '' ? 0 : Number(raw); if (!isFinite(v)) { Toast.show('Enter the balance as a number', 'bad'); return render(); } updCfg((c) => (c.accounts[i].opening = c.accounts[i].kind === 'card' ? -Math.abs(v) : v)); } })),
+    h('td', { 'data-label': a.kind === 'card' ? 'Amount owed at start (₹)' : a.kind === 'savings' ? 'Value at start (₹)' : 'Opening balance (₹)' }, h('input', { id: 'acc-open-' + a.id, class: 'in', inputmode: 'decimal', style: { textAlign: 'right' }, 'aria-label': 'Opening balance of ' + a.name, value: a.opening ? String(a.kind === 'card' ? Math.abs(a.opening) : a.opening) : '', placeholder: '0', onChange: (e) => { const raw = e.target.value.replace(/[₹,\s]/g, ''); const v = raw === '' ? 0 : Number(raw); if (!isFinite(v)) { Toast.show('Enter the balance as a number', 'bad'); return render(); } updCfg((c) => (c.accounts[i].opening = c.accounts[i].kind === 'card' ? -Math.abs(v) : v)); } })),
     h('td', { 'data-label': 'In use' }, h('label', { class: 'check' }, h('input', { type: 'checkbox', id: 'acc-act-' + a.id, checked: a.active, onChange: (e) => updCfg((c) => (c.accounts[i].active = e.target.checked)) }), a.active ? 'Active' : 'Archived'))));
   const nm = newAcct;
   return h('section', { class: 'card', 'aria-label': 'Accounts' },
-    h('header', null, h('div', null, h('h3', null, 'Accounts'), h('p', null, 'Opening balances are as of the start of the tracking date. Add each credit card as its own account and enter what you owed on that date. Archived accounts drop out of totals, so archive only a settled account.'))),
-    h('div', { class: 'tw' }, h('table', { class: 'tbl stackable' }, h('thead', null, h('tr', null, ['Name', 'Type', 'Opening balance (₹)', 'In use'].map((x, i) => h('th', { class: i === 2 ? 'r' : '' }, x)))), h('tbody', null, rows))),
-    h('form', { class: 'fgrid', style: { borderTop: '1px solid var(--line)', paddingTop: '14px' }, onSubmit: (e) => {
+    h('header', null, h('div', null, h('h3', null, 'Accounts'), h('p', null, 'Opening balances are as of the start of the tracking date. Add each credit card as its own account and enter what you owed on that date. Add each online wallet (RailOne, Paytm and similar) as an Online wallet: top it up with an own-account transfer and spend from it like a bank. Add EPFO, PPF, NPS, deposits and funds as Savings or investment accounts, and record their passbook value from the Dashboard. Archived accounts drop out of totals, so archive only a settled account.'))),
+    h('div', { class: 'tw' }, h('table', { class: 'tbl stackable' }, h('thead', null, h('tr', null, ['Name', 'Type', 'Opening balance or value (₹)', 'In use'].map((x, i) => h('th', { class: i === 2 ? 'r' : '' }, x)))), h('tbody', null, rows))),
+    h('div', { class: 'stack', style: { borderTop: '1px solid var(--line)', paddingTop: '14px', gap: '8px' } },
+      ACCT_PRESETS.map((g) => h('div', { class: 'row', style: { gap: '8px' } }, h('span', { class: 'small muted', style: { minWidth: '150px' } }, g.group),
+        g.names.filter((n) => !cfg.accounts.some((a) => a.name.toLowerCase() === n.toLowerCase())).map((n) => h('button', { type: 'button', class: 'btn sm', 'aria-label': 'Fill in ' + n + ' as ' + Core.KIND_LABEL[g.kind], onClick: () => { newAcct.v = n; newAcct.kind = g.kind; render(); const e = document.getElementById('acc-new-open'); if (e) e.focus(); } }, icon('plus', 14), n))))),
+    h('form', { class: 'fgrid', style: { paddingTop: '4px' }, onSubmit: (e) => {
       e.preventDefault();
       if (!nm.v.trim()) { Toast.show('Give the account a name', 'bad'); return; }
       const raw = nm.open.replace(/[₹,\s]/g, ''); const ov = raw === '' ? 0 : Number(raw);
       if (!isFinite(ov)) { Toast.show('Enter the opening balance as a number', 'bad'); return; }
       if (!updCfg((c) => c.accounts.push({ id: slug(nm.v), name: nm.v.trim(), kind: nm.kind, opening: nm.kind === 'card' ? -Math.abs(ov) : ov, active: true }))) return;
+      const addedKind = nm.kind;
       newAcct.v = ''; newAcct.open = ''; newAcct.kind = 'bank';
-      Toast.show('Account added');
+      Toast.show(addedKind === 'savings' ? 'Account added. Record its value from the Dashboard.' : 'Account added');
     } },
-      field('New account name', h('input', { id: 'acc-new-name', class: 'in', placeholder: 'e.g. SBI Card', value: nm.v, onInput: (e) => (nm.v = e.target.value) }), 'c4'),
+      field('New account name', h('input', { id: 'acc-new-name', class: 'in', placeholder: 'e.g. SBI Card or Paytm', value: nm.v, onInput: (e) => (nm.v = e.target.value) }), 'c4'),
       field('Type', select('acc-new-kind', Object.keys(Core.KIND_LABEL).map((k) => ({ value: k, label: Core.KIND_LABEL[k] })), nm.kind, (v) => (nm.kind = v)), 'c3'),
-      field('Opening balance or amount owed (₹)', h('input', { id: 'acc-new-open', class: 'in', inputmode: 'decimal', value: nm.open, onInput: (e) => (nm.open = e.target.value) }), 'c3'),
+      field('Opening balance, amount owed or value (₹)', h('input', { id: 'acc-new-open', class: 'in', inputmode: 'decimal', value: nm.open, onInput: (e) => (nm.open = e.target.value) }), 'c3'),
       h('div', { class: 'c2', style: { alignSelf: 'end' } }, h('button', { class: 'btn primary', type: 'submit', style: { width: '100%' } }, 'Add'))));
 }
 function categoriesCard(d) {

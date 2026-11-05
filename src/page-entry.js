@@ -1,6 +1,6 @@
 'use strict';
 /* Add entries: day + slot picker, draft rows, day summary, calendar and catch-up list. */
-function firstAcct() { const a = Store.derive().cfg.accounts.filter((x) => x.active); return a.length ? a[0].id : ''; }
+function firstAcct() { const a = Store.derive().cfg.accounts.filter((x) => x.active && !Core.isHolding(x)); return a.length ? a[0].id : ''; }
 function newDraft(o) {
   const d = Store.derive();
   const last = Prefs.get('lastEntry', {});
@@ -70,8 +70,8 @@ function rowForm(dr, o) {
     const cfg = Store.derive().cfg, am = Core.acctMap(cfg), cm = Core.catMap(cfg);
     const id = (k) => 'd-' + dr.id + '-' + k;
     const t = dr.type, e = dr.err || {};
-    const accts = cfg.accounts.filter((a) => a.active || a.id === dr.acct || a.id === dr.toAcct);
-    const aOpts = accts.map((a) => ({ value: a.id, label: a.name + (a.kind === 'card' ? ' (card)' : '') + (a.active ? '' : ' (archived)') }));
+    const accts = cfg.accounts.filter((a) => (a.active && !Core.isHolding(a)) || a.id === dr.acct || a.id === dr.toAcct);
+    const aOpts = accts.map((a) => ({ value: a.id, label: a.name + (a.kind === 'card' ? ' (card)' : a.kind === 'wallet' ? ' (wallet)' : '') + (a.active ? '' : ' (archived)') }));
     const errFor = (k) => (e[k] ? h('span', { class: 'err-text', role: 'alert' }, e[k]) : null);
     const inv = (k) => (e[k] ? { 'aria-invalid': 'true' } : {});
     const acct = am[dr.acct];
@@ -88,7 +88,7 @@ function rowForm(dr, o) {
     const amtLabel = t === 'transfer' ? 'Amount moved (₹)' : t === 'income' ? 'Amount received (₹)' : 'Amount (₹)';
     const amtField = field(amtLabel, h('input', { id: id('amt'), class: 'in', inputmode: 'decimal', autocomplete: 'off', placeholder: 'e.g. 250 or 120+80', value: dr.amt, ...inv('amt'), onInput: (ev) => (dr.amt = ev.target.value) }), 'c3', null);
     const acctLabel = t === 'income' ? 'Received in' : t === 'transfer' ? 'From account' : 'Paid from';
-    const acctField = field(acctLabel, select(id('acct'), aOpts, dr.acct, (v) => { dr.acct = v; dr.touched.acct = true; const a = am[v]; if (a && a.kind === 'card') dr.mode = 'Credit card'; else if (dr.mode === 'Credit card') dr.mode = 'UPI'; paint(); }, inv('acct')), 'c4');
+    const acctField = field(acctLabel, select(id('acct'), aOpts, dr.acct, (v) => { dr.acct = v; dr.touched.acct = true; const a = am[v]; if (a && a.kind === 'card') dr.mode = 'Credit card'; else if (a && a.kind === 'wallet') dr.mode = 'Wallet'; else if (dr.mode === 'Credit card' || dr.mode === 'Wallet') dr.mode = 'UPI'; paint(); }, inv('acct')), 'c4');
     const catKind = KIND_OF_TYPE[t];
     const catLabel = t === 'income' ? 'Source' : t === 'investment' ? 'Goes into' : t === 'transferout' ? 'Purpose' : 'Category';
     const catField = t === 'transfer'

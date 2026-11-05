@@ -146,5 +146,60 @@ eq('csv formula guard', C.toCSV([{ Date: '=1+1', Description: 'a,"b"' }]).includ
 const smp = C.genSample('2026-10-26', C.defaultCfg());
 eq('sample has demo flags', smp.txns.every((t) => t.demo), true);
 eq('sample recon cash off by 120', (() => { const c2 = { ...C.defaultCfg(), start: '2026-10-01' }; const l = C.buildLegs(C.flatten({ x: Object.fromEntries(smp.txns.map((t) => [t.id, t])) })); return Math.round((smp.recon[1].bal - C.balanceAt(c2, l, 'a_cash', smp.recon[1].asOf)) * 100) / 100; })(), 120);
+
+// ---- online wallets and savings accounts (worked out by hand) ----
+// Start 1 Oct. HDFC 10000. RailOne wallet 200. Card owes 2000. EPFO is worth 50000 on the start date. PPF has nothing yet.
+const cfgW = C.normCfg({
+  start: '2026-10-01',
+  accounts: [
+    { id: 'H', name: 'HDFC', kind: 'bank', opening: 10000, active: true },
+    { id: 'W', name: 'RailOne', kind: 'wallet', opening: 200, active: true },
+    { id: 'K', name: 'Card', kind: 'card', opening: -2000, active: true },
+    { id: 'E', name: 'EPFO', kind: 'savings', opening: 50000, active: true },
+    { id: 'P', name: 'PPF', kind: 'savings', opening: 0, active: true },
+  ],
+  cats: C.DEFAULT_CATS, budgets: {}, targets: { needs: 50, wants: 30, savings: 20 }, plannedIncome: 0,
+});
+const tw = C.flatten({ '2026-10': {
+  w1: T('w1', '2026-10-03', 'morning', 'transfer', 'H', { toAcct: 'W', amt: 500 }),
+  w2: T('w2', '2026-10-04', 'evening', 'expense', 'W', { amt: 120, cat: 'c_dine', group: 'wants', mode: 'Wallet' }),
+  w3: T('w3', '2026-10-05', 'morning', 'expense', 'H', { amt: 1000, cat: 'c_groc', group: 'needs' }),
+  w4: T('w4', '2026-10-06', 'morning', 'income', 'W', { amt: 30, cat: 'c_ref' }),
+} });
+const lw = C.buildLegs(tw);
+eq('wallet balance 31 Oct: 200 + 500 - 120 + 30', C.balanceAt(cfgW, lw, 'W', '2026-10-31'), 610);
+eq('bank balance 31 Oct: 10000 - 500 - 1000', C.balanceAt(cfgW, lw, 'H', '2026-10-31'), 8500);
+const clw = C.closing(cfgW, lw, oct, '2026-10-31');
+eq('closing total leaves savings out: 8500 + 610 - 2000', clw.total, 7110);
+eq('closing banks, cash and wallets: 8500 + 610', clw.banks, 9110);
+eq('closing cards', clw.cards, -2000);
+eq('closing wallets alone', clw.wallets, 610);
+eq('closing lists only spendable accounts', clw.per.map((x) => x.acct.id), ['H', 'W', 'K']);
+const sw = C.summarize(tw, oct.from, oct.to);
+eq('a wallet top-up is an own-account move, left out of totals', [sw.income, sw.expense, sw.xfer, sw.invest, sw.tout], [30, 1120, 500, 0, 0]);
+eq('KIND_LABEL names the new kinds', [C.KIND_LABEL.wallet, C.KIND_LABEL.savings], ['Online wallet', 'Savings or investment']);
+eq('isHolding is true only for savings', [C.isHolding(cfgW.accounts[0]), C.isHolding(cfgW.accounts[1]), C.isHolding(cfgW.accounts[3]), C.isHolding(null)], [false, false, true, false]);
+eq('Wallet is a payment mode', C.MODES.includes('Wallet'), true);
+const reW = C.normRecon({ r1: { acct: 'W', asOf: '2026-10-31', bal: 610, ts: 1 }, r2: { acct: 'E', asOf: '2026-10-15', bal: 52000, ts: 2 }, r3: { acct: 'E', asOf: '2026-10-31', bal: 55000, ts: 3 } });
+const rcW = C.reconcile(cfgW, lw, reW, oct, '2026-10-31');
+eq('reconcile covers spendable accounts only', rcW.map((r) => [r.acct.id, r.status]), [['H', 'none'], ['W', 'reconciled'], ['K', 'none']]);
+eq('a wallet balance that is off by 10 is a mismatch', C.reconcile(cfgW, lw, C.normRecon({ r1: { acct: 'W', asOf: '2026-10-31', bal: 600, ts: 1 } }), oct, '2026-10-31').find((r) => r.acct.id === 'W').diff, -10);
+// holdings: latest recorded value on or before the date, else the value at start
+const h31 = C.holdings(cfgW, reW, oct, '2026-10-31');
+eq('holdings on 31 Oct: EPFO 55000 (up 3000 on 52000), PPF none', h31.rows.map((r) => [r.acct.id, r.status, r.value, r.change]), [['E', 'recorded', 55000, 3000], ['P', 'none', undefined, undefined]]);
+eq('holdings total and counted', [h31.total, h31.counted, h31.asOf], [55000, 1, '2026-10-31']);
+const h20 = C.holdings(cfgW, reW, oct, '2026-10-20');
+eq('holdings on 20 Oct: EPFO 52000, up 2000 on the start value', [h20.rows[0].value, h20.rows[0].asOf, h20.rows[0].prev, h20.rows[0].change, h20.total], [52000, '2026-10-15', 50000, 2000, 52000]);
+const h10 = C.holdings(cfgW, reW, oct, '2026-10-10');
+eq('before any record the value entered in Setup counts', [h10.rows[0].status, h10.rows[0].value, h10.rows[0].asOf, h10.rows[0].change], ['opening', 50000, '2026-10-01', null]);
+eq('holdings before the tracking start are null', C.holdings(cfgW, reW, C.makePeriod(2026, '2026-09'), '2026-10-31'), null);
+const tie = C.normRecon({ a: { acct: 'E', asOf: '2026-10-01', bal: 49000, ts: 5 } });
+const hTie = C.holdings(cfgW, tie, oct, '2026-10-10');
+eq('a record dated the start day beats the start value, and the start value is its previous', [hTie.rows[0].status, hTie.rows[0].value, hTie.rows[0].prev, hTie.rows[0].change], ['recorded', 49000, 50000, -1000]);
+eq('the later of two records on one day wins', C.holdings(cfgW, C.normRecon({ a: { acct: 'E', asOf: '2026-10-12', bal: 51000, ts: 1 }, b: { acct: 'E', asOf: '2026-10-12', bal: 51500, ts: 2 } }), oct, '2026-10-31').rows[0].value, 51500);
+const cfgArch = { ...cfgW, accounts: cfgW.accounts.map((a) => (a.id === 'E' ? { ...a, active: false } : a)) };
+eq('an archived savings account drops out of holdings', C.holdings(cfgArch, reW, oct, '2026-10-31').rows.map((r) => r.acct.id), ['P']);
+eq('net worth = closing balance + holdings: 7110 + 55000', C.fromP(C.toP(clw.total) + C.toP(h31.total)), 62110);
+eq('a period ending before today uses its own end date', C.holdings(cfgW, reW, C.makePeriod(2026, '2026-10'), '2026-12-01').asOf, '2026-10-31');
 console.log('unit tests: ' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

@@ -21,7 +21,7 @@ const Core = (function () {
   ];
   const typeLabel = (id) => (TYPES.find((t) => t.id === id) || { label: id }).label;
 
-  const MODES = ['UPI', 'Debit card', 'Credit card', 'Cash', 'NEFT/IMPS/RTGS', 'Cheque', 'Net banking', 'Auto-debit'];
+  const MODES = ['UPI', 'Debit card', 'Credit card', 'Wallet', 'Cash', 'NEFT/IMPS/RTGS', 'Cheque', 'Net banking', 'Auto-debit'];
   const GROUPS = [
     { id: 'needs', label: 'Needs', def: 50 },
     { id: 'wants', label: 'Wants', def: 30 },
@@ -29,7 +29,10 @@ const Core = (function () {
   ];
   const groupLabel = (id) => (GROUPS.find((g) => g.id === id) || { label: '' }).label;
   const groupTag = (id, cfg) => groupLabel(id) + ' (' + (Number(cfg && cfg.targets && cfg.targets[id]) || 0) + '%)';
-  const KIND_LABEL = { bank: 'Bank account', cash: 'Cash', card: 'Credit card' };
+  const KIND_LABEL = { bank: 'Bank account', cash: 'Cash', wallet: 'Online wallet', card: 'Credit card', savings: 'Savings or investment' };
+  // A savings or investment account (EPFO, PPF, NPS, FD, funds) is a holding: its value comes from the passbook or
+  // statement value you record, not from entries, and it stays out of the spendable balance.
+  const isHolding = (a) => !!a && a.kind === 'savings';
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -271,17 +274,19 @@ const Core = (function () {
     if (asOf < cfg.start) return null;
     let total = 0, banks = 0, cards = 0;
     const per = [];
-    cfg.accounts.filter((a) => a.active).forEach((a) => {
+    let wallets = 0;
+    cfg.accounts.filter((a) => a.active && !isHolding(a)).forEach((a) => {
       const b = balanceAt(cfg, legs, a.id, asOf);
       const p = toP(b);
       total += p; if (a.kind === 'card') cards += p; else banks += p;
+      if (a.kind === 'wallet') wallets += p;
       per.push({ acct: a, bal: b });
     });
-    return { asOf, total: fromP(total), banks: fromP(banks), cards: fromP(cards), per };
+    return { asOf, total: fromP(total), banks: fromP(banks), cards: fromP(cards), wallets: fromP(wallets), per };
   }
   function reconcile(cfg, legs, recon, period, today) {
     const cap = minD(period.to, today);
-    return cfg.accounts.filter((a) => a.active).map((a) => {
+    return cfg.accounts.filter((a) => a.active && !isHolding(a)).map((a) => {
       const es = recon.filter((r) => r.acct === a.id && r.asOf <= cap).sort((x, y) => (x.asOf === y.asOf ? y.ts - x.ts : x.asOf < y.asOf ? 1 : -1));
       const e = es[0];
       if (!e) return { acct: a, status: 'none' };
@@ -290,6 +295,24 @@ const Core = (function () {
       const diff = fromP(toP(e.bal) - toP(tracker));
       return { acct: a, id: e.id, asOf: e.asOf, bank: e.bal, tracker, diff, status: Math.abs(diff) <= 0.5 ? 'reconciled' : 'mismatch' };
     });
+  }
+  // Value of each active savings or investment account on the earlier of the period end and today.
+  // The value is the latest one you recorded on or before that date. Before any is recorded, the value entered in Setup
+  // counts as the value on the tracking start date. A record dated the same day as the start date wins over it.
+  function holdings(cfg, recon, period, today) {
+    const cap = minD(period.to, today);
+    if (cap < cfg.start) return null;
+    let total = 0, counted = 0;
+    const rows = cfg.accounts.filter((a) => a.active && isHolding(a)).map((a) => {
+      const pts = recon.filter((r) => r.acct === a.id && r.asOf <= cap).map((r) => ({ id: r.id, asOf: r.asOf, value: r.bal, ts: r.ts, rec: true }));
+      if (toP(a.opening) !== 0) pts.push({ asOf: cfg.start, value: Number(a.opening), ts: -1, rec: false });
+      pts.sort((x, y) => (x.asOf === y.asOf ? y.ts - x.ts : x.asOf < y.asOf ? 1 : -1));
+      const cur = pts[0], prev = pts[1];
+      if (!cur) return { acct: a, status: 'none' };
+      total += toP(cur.value); counted++;
+      return { acct: a, status: cur.rec ? 'recorded' : 'opening', id: cur.id, asOf: cur.asOf, value: cur.value, prev: prev ? prev.value : null, prevAsOf: prev ? prev.asOf : null, change: prev ? fromP(toP(cur.value) - toP(prev.value)) : null };
+    });
+    return { asOf: cap, total: fromP(total), counted, rows };
   }
   function normRecon(items) {
     const out = [];
@@ -568,7 +591,7 @@ const Core = (function () {
     pad, ymd, parts, addDays, diffDays, isDate, daysInMonth, monthKey, monthStart, monthEnd, addMonths, dow, minD, maxD, localDate, isoWeek, cwLabel,
     monthLabel, monthShort, monthTag, dayLabel, dateLabel, dmy, fyOf, fyRange, fyLabel, fyMonths, makePeriod,
     toP, fromP, fmtINR, fmtCompact, fmtPct, parseAmt, defaultCfg, normCfg, acctMap, catMap, DEFAULT_CATS, DEFAULT_ACCOUNTS,
-    normTxn, flatten, legsOf, buildLegs, spendGroup, summarize, elapsedDays, balanceAt, closing, reconcile, normRecon,
+    normTxn, flatten, legsOf, buildLegs, spendGroup, summarize, elapsedDays, balanceAt, closing, reconcile, holdings, isHolding, normRecon,
     coverageMap, missingSlots, gaps, normMarks, bucketStatus, fiftyThirtyTwenty, topCategories, monthlySeries, weeklySeries, dailySeries, bucketize,
     firstTracked, monthsElapsed, budgetRows, pace, planChecks, exportRows, EXPORT_COLS, toCSV, genSample, liveTxns, marksOf,
   };

@@ -1,6 +1,6 @@
 {
   "name": "expense-ledger",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "description": "Personal daily, monthly and yearly expense ledger that runs in the browser and syncs through a OneDrive folder.",
   "license": "MIT",

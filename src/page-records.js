@@ -124,7 +124,7 @@ function paintRecords() {
 function pageRecords() {
   const r = ui.rec, d = Store.derive();
   const pick = (k) => (v) => { r[k] = v; r.limit = 100; paintRecords(); };
-  const accts = [{ value: '', label: 'All banks' }].concat(d.cfg.accounts.map((a) => ({ value: a.id, label: a.name + (a.active ? '' : ' (archived)') })));
+  const accts = [{ value: '', label: 'All banks' }].concat(d.cfg.accounts.filter((a) => !Core.isHolding(a)).map((a) => ({ value: a.id, label: a.name + (a.active ? '' : ' (archived)') })));
   const catOpts = [{ value: '', label: 'All categories' }].concat(['expense', 'income', 'investment', 'transferout'].map((k) => ({ group: Core.typeLabel(k), items: d.cfg.cats.filter((c) => c.kind === k).map((c) => ({ value: c.id, label: c.name })) })));
   const presets = [{ value: 'period', label: 'Dashboard period' }, { value: 'month', label: 'This month' }, { value: '7', label: '7 days' }, { value: '30', label: '30 days' }, { value: 'fy', label: 'This FY' }, { value: 'all', label: 'All' }, { value: 'custom', label: 'Custom' }];
   const custom = r.preset === 'custom';

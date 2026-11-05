@@ -121,7 +121,7 @@ function impStatus(r) {
 function impReview() {
   const d = Store.derive(), cfg = d.cfg, am = Core.acctMap(cfg), cm = Core.catMap(cfg);
   const t = imp.parsed, c = imp.counts, res = imp.res;
-  const accts = cfg.accounts.filter((a) => a.active !== false);
+  const accts = cfg.accounts.filter((a) => a.active !== false && !Core.isHolding(a));
   const needsDefaultBank = !t.hasBankCol || t.drafts.some((x) => !x.bankRaw);
   const willAdd = c.new + (imp.opt.importDups ? c.dup + c.maybe : 0);
   const willChange = imp.opt.update ? c.update : 0;

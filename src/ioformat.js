@@ -244,7 +244,7 @@ const IO = (function () {
   const TYPE_ALIAS = { expense: 'expense', expenses: 'expense', income: 'income', investment: 'investment', investments: 'investment', savingsandinvestment: 'investment', savingsandinvestments: 'investment', savings: 'investment', saving: 'investment', invest: 'investment', transfer: 'transfer', owntransfer: 'transfer', ownaccounttransfer: 'transfer', transferout: 'transferout', sentout: 'transferout', senttoothers: 'transferout' };
   const parseType = (raw) => TYPE_ALIAS[norm(raw)] || null;
   const parseGroup = (raw) => { const m = /^\s*(needs?|wants?|savings?)\b/i.exec(String(raw || '')); return m ? { n: 'needs', w: 'wants', s: 'savings' }[m[1][0].toLowerCase()] : ''; };
-  const MODE_ALIAS = { upi: 'UPI', gpay: 'UPI', phonepe: 'UPI', paytm: 'UPI', debitcard: 'Debit card', atm: 'Debit card', creditcard: 'Credit card', cash: 'Cash', neft: 'NEFT/IMPS/RTGS', imps: 'NEFT/IMPS/RTGS', rtgs: 'NEFT/IMPS/RTGS', neftimpsrtgs: 'NEFT/IMPS/RTGS', cheque: 'Cheque', check: 'Cheque', netbanking: 'Net banking', internetbanking: 'Net banking', autodebit: 'Auto-debit', ecs: 'Auto-debit', nach: 'Auto-debit', emandate: 'Auto-debit' };
+  const MODE_ALIAS = { upi: 'UPI', gpay: 'UPI', phonepe: 'UPI', paytm: 'UPI', debitcard: 'Debit card', atm: 'Debit card', creditcard: 'Credit card', wallet: 'Wallet', ewallet: 'Wallet', cash: 'Cash', neft: 'NEFT/IMPS/RTGS', imps: 'NEFT/IMPS/RTGS', rtgs: 'NEFT/IMPS/RTGS', neftimpsrtgs: 'NEFT/IMPS/RTGS', cheque: 'Cheque', check: 'Cheque', netbanking: 'Net banking', internetbanking: 'Net banking', autodebit: 'Auto-debit', ecs: 'Auto-debit', nach: 'Auto-debit', emandate: 'Auto-debit' };
   const parseMode = (raw) => { const s = String(raw || '').trim(); if (!s) return ''; return C.MODES.find((m) => norm(m) === norm(s)) || MODE_ALIAS[norm(s)] || s.slice(0, 40); };
 
   // ================= table -> drafts =================
@@ -335,7 +335,7 @@ const IO = (function () {
   function resolve(drafts, cfg, ctx) {
     ctx = ctx || {};
     const bankMap = ctx.bankMap || {}, catMapOv = ctx.catMap || {};
-    const accts = cfg.accounts, cats = cfg.cats;
+    const accts = cfg.accounts.filter((a) => a.kind !== 'savings'), cats = cfg.cats; // entries never sit on a savings or investment account
     const today = ctx.today || '9999-12-31';
     const bankNeeds = new Map(), catNeeds = new Map(), newCats = new Map();
     const exactBank = (name) => { const k = norm(name); return k ? accts.find((x) => norm(x.name) === k || norm(x.id) === k) : null; };
